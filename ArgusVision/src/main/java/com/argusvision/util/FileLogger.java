@@ -1,4 +1,4 @@
-package main.java.com.argusvision.util;
+package com.argusvision.util;
 
 import java.io.*;
 import java.text.SimpleDateFormat;

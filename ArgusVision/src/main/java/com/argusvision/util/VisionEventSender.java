@@ -1,4 +1,4 @@
-package main.java.com.argusvision.util;
+package com.argusvision.util;
 
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -7,7 +7,6 @@ import java.net.http.HttpResponse;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-// Configuração fixa, similar ao config.properties do plugin
 public class VisionEventSender {
 
     private static final String SERVER_URL = "http://localhost:8080/api/event";
