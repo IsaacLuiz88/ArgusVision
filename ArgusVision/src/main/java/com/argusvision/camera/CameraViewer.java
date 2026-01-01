@@ -61,11 +61,10 @@ public class CameraViewer extends JFrame {
         
         add(mainPanel);
         
-        JLabel identityLabel = new JLabel("Aluno: -- | Prova: --", SwingConstants.CENTER);
-        identityLabel.setFont(new Font("Arial", Font.BOLD, 16));
-        identityLabel.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
+        this.identityLabel = new JLabel("Aluno: -- | Prova: --", SwingConstants.CENTER);
+        this.identityLabel.setFont(new Font("Arial", Font.BOLD, 16));
+        this.identityLabel.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
         mainPanel.add(identityLabel, BorderLayout.WEST);
-        this.identityLabel = identityLabel;
     }
 
     private JLabel createStatusLabel(String text, Color color) {

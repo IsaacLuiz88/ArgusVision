@@ -54,7 +54,7 @@ public class ArgusVisionApp {
 		Runtime.getRuntime().addShutdownHook(new Thread(() -> {
 			System.out.println("Encerrando sistema...");
 			monitor.stop();
-			monitor.release();
+			//monitor.release();
 			FileLogger.closeJsonLog();
 		}));
 	}

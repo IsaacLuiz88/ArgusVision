@@ -3,8 +3,6 @@ package com.argusvision.camera;
 import org.opencv.core.*;
 import org.opencv.imgproc.Imgproc;
 import org.opencv.objdetect.CascadeClassifier;
-import org.opencv.video.BackgroundSubtractorMOG2;
-import org.opencv.video.Video;
 import org.opencv.videoio.VideoCapture;
 
 import com.argusvision.util.FileLogger;
@@ -12,309 +10,248 @@ import com.argusvision.util.VisionContext;
 import com.argusvision.util.VisionEventSender;
 
 import java.awt.Color;
-import java.util.ArrayList;
-import java.util.List;
-
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
-/**
- * VisionMonitor: Monitora um aluno durante um exame.
- * - Detecta rosto frontal.
- * - Detecta movimento no vídeo.
- * - Atualiza GUI e envia eventos para servidor.
- */
 public class VisionMonitor {
 
-    private CascadeClassifier frontalDetector;      // Detector de rosto frontal
-    private BackgroundSubtractorMOG2 motionDetector; // Detector de movimento
-    private CameraViewer gui;
-
-    private String studentName;
-    private String examName;
-
-    private String lastFaceStatus = "";
-    private boolean lastMotionStatus = false;
-    private boolean running = false;
-
-    // Controle anti-flicker (para evitar status piscando)
-    private int noFaceCount = 0;
-    private final int MAX_NO_FACE_FRAMES = 5;
-
-    // Máscara usada para detecção de movimento
-    private Mat foregroundMask;
-
-    // Parâmetros de detecção de rosto
-    private final double FRONTAL_SCALE_FACTOR = 1.12;
-    private final int FRONTAL_MIN_NEIGHBORS = 3;
-
-    private long lastGuiUpdate = 0;
-
-    private VisionEventSender eventSender;
-
-    public VisionMonitor(String studentName, String examName, CameraViewer gui) {
-        this.studentName = studentName;
-        this.examName = examName;
-        VisionContext.student = studentName;
-        VisionContext.exam = examName;
-
-        this.gui = gui;
-
-        // Inicializa detector de rosto frontal
-        this.frontalDetector = loadCascade("facedetector/haarcascade_frontalface_default.xml");
-        gui.addLog("HaarCascade frontal carregado com sucesso.");
-        if (frontalDetector.empty()) {
-            gui.addLog("ERRO: HaarCascadeFrontalFace (default) não encontrado. Verifique o caminho.");
-            System.err.println("Erro ao carregar xml frontal.");
-        }
-
-        // Inicializa detector de movimento
-        this.motionDetector = Video.createBackgroundSubtractorMOG2();
-        this.motionDetector.setVarThreshold(25);
-        this.foregroundMask = new Mat();
-
-        // Inicializa envio de eventos
-        this.eventSender = new VisionEventSender();
-    }
-
-    private CascadeClassifier loadCascade(String resourcePath) {
-        try (InputStream is =
-                 getClass().getClassLoader().getResourceAsStream(resourcePath)) {
-
-            if (is == null) {
-                throw new RuntimeException(
-                    "HaarCascade não encontrado no classpath: " + resourcePath
-                );
-            }
-
-            Path tempFile = Files.createTempFile("cascade-", ".xml");
-            Files.copy(is, tempFile, StandardCopyOption.REPLACE_EXISTING);
-
-            CascadeClassifier classifier =
-                new CascadeClassifier(tempFile.toAbsolutePath().toString());
-
-            if (classifier.empty()) {
-                throw new RuntimeException("CascadeClassifier vazio após carregamento");
-            }
-
-            return classifier;
-
-        } catch (Exception e) {
-            throw new RuntimeException("Erro ao carregar Haar Cascade", e);
-        }
-    }
-
-    /** Inicia o monitoramento em thread separada */
-    public void start() {
-        running = true;
-
-        new Thread(() -> {
-            VideoCapture camera = new VideoCapture(0);
-
-            if (!camera.isOpened()) {
-                gui.addLog("ERRO FATAL: Câmera não detectada!");
-                return;
-            } else {
-                gui.addLog("Câmera iniciada com sucesso.");
-                gui.setStatus("Monitoramento Ativo");
-            }
-
-            Mat frame = new Mat();
-            Mat displayFrame = new Mat(); // Frame para exibição na GUI
-
-            while (running && camera.isOpened()) {
-                if (camera.read(frame)) {
-                    // Redimensiona para 640x480
-                    Imgproc.resize(frame, displayFrame, new Size(640, 480));
-
-                    // Detecta rostos
-                    detectFaces(displayFrame);
-
-                    // Detecta movimento
-                    detectMotion(displayFrame);
-
-                    // Atualiza GUI (~25 FPS)
-                    long now = System.currentTimeMillis();
-                    if (now - lastGuiUpdate > 40) {
-                        gui.updateFrame(displayFrame);
-                        lastGuiUpdate = now;
-                    }
-
-                } else {
-                    gui.addLog("Falha ao ler frame da câmera.");
-                }
-
-                // Pequena pausa para controlar FPS (~30fps)
-                try {
-                    Thread.sleep(33);
-                } catch (InterruptedException ignored) {
-                }
-            }
-
-            camera.release();
-            gui.setStatus("Câmera Encerrada");
-        }).start();
-    }
-
-    /** Para o monitoramento */
-    public void stop() {
-        running = false;
-    }
-
-    /** Libera recursos */
-    public void release() {
-        if (foregroundMask != null)
-            foregroundMask.release();
-
-        if (eventSender != null)
-            eventSender.shutdown();
-    }
-
-    /** Detecta o rosto frontal e atualiza status da GUI/Servidor */
-    private void detectFaces(Mat frame) {
-    	if (frontalDetector == null || frontalDetector.empty()) {
-    	    return;
-    	}
-
-        MatOfRect faces = new MatOfRect();
-        Mat gray = new Mat();
-
-        // Converte para escala de cinza e equaliza histograma
-        Imgproc.cvtColor(frame, gray, Imgproc.COLOR_BGR2GRAY);
-        Imgproc.equalizeHist(gray, gray);
-
-        // Detecta rostos frontais
-        frontalDetector.detectMultiScale(gray, faces, FRONTAL_SCALE_FACTOR, FRONTAL_MIN_NEIGHBORS,
-                0, new Size(60, 60), new Size(400, 400));
-
-        // Seleciona o maior rosto (desconsidera ruído)
-        Rect mainFace = null;
-        double maxArea = 0;
-        for (Rect face : faces.toList()) {
-            double area = face.area();
-            if (area > maxArea) {
-                maxArea = area;
-                mainFace = face;
-            }
-        }
-        if (maxArea < 2500) mainFace = null;
-
-        // Atualiza status e anti-flicker
-        String currentStatus = "Nenhum Rosto";
-        Color currentColor = Color.RED;
-
-        if (mainFace != null) {
-            noFaceCount = 0;
-
-            int centerX = mainFace.x + mainFace.width / 2;
-            int centerY = mainFace.y + mainFace.height / 2;
-
-            // Determina posição do olhar
-            double horizontalThreshold = 0.30;
-            double verticalThreshold = 0.35;
-
-            if (centerX < frame.width() * horizontalThreshold) {
-                currentStatus = "Olhando Direita";
-                currentColor = Color.ORANGE;
-            } else if (centerX > frame.width() * (1.0 - horizontalThreshold)) {
-                currentStatus = "Olhando Esquerda";
-                currentColor = Color.ORANGE;
-            } else if (centerY < frame.height() * verticalThreshold) {
-                currentStatus = "Olhando Para Cima";
-                currentColor = Color.ORANGE;
-            } else if (centerY > frame.height() * (1.0 - verticalThreshold)) {
-                currentStatus = "Olhando Para Baixo";
-                currentColor = Color.ORANGE;
-            } else {
-                currentStatus = "Detectado (Centro)";
-                currentColor = new Color(0, 150, 0);
-            }
-
-            // Desenha retângulo e nome
-            Imgproc.rectangle(frame, mainFace,
-                    new Scalar(currentColor.getBlue(), currentColor.getGreen(), currentColor.getRed()), 2);
-            Imgproc.putText(frame, studentName, new Point(mainFace.x, mainFace.y - 10),
-                    Imgproc.FONT_HERSHEY_SIMPLEX, 0.7,
-                    new Scalar(currentColor.getBlue(), currentColor.getGreen(), currentColor.getRed()), 2);
-
-            gui.updateFaceStatus(currentStatus, currentColor);
-
-            if (!currentStatus.equals(lastFaceStatus)) {
-                String action = currentStatus.replaceAll(" ", "_").replaceAll("[()]", "").toUpperCase();
-
-                // Envia evento ao servidor e registra logs
-                eventSender.sendEventAsync("vision", action);
-                String logMessage = String.format("[%s | %s] Rosto: %s (SENT)", studentName, examName, currentStatus);
-                gui.addLog(logMessage);
-                FileLogger.logTxt(logMessage);
-                FileLogger.logJson("Rosto", currentStatus, 2);
-
-                lastFaceStatus = currentStatus;
-            }
-
-        } else {
-            // Nenhum rosto detectado
-            noFaceCount++;
-            if (noFaceCount >= MAX_NO_FACE_FRAMES && !"Nenhum Rosto".equals(lastFaceStatus)) {
-                String action = "NO_FACE_LONG";
-                eventSender.sendEventAsync("vision", action);
-
-                String logMessage = String.format("[%s | %s] Rosto: Nenhum Rosto (SENT)", studentName, examName);
-                gui.addLog(logMessage);
-                FileLogger.logTxt(logMessage);
-                FileLogger.logJson("Rosto", "Nenhum Rosto", 2);
-
-                gui.updateFaceStatus("Nenhum Rosto", Color.RED);
-                Imgproc.putText(frame, "ROSTO NAO DETECTADO", new Point(50, 50),
-                        Imgproc.FONT_HERSHEY_SIMPLEX, 1, new Scalar(0, 0, 255), 2);
-
-                lastFaceStatus = "Nenhum Rosto";
-            }
-        }
-
-        gray.release();
-    }
-
-    /** Detecta movimento e atualiza status da GUI/Servidor */
-    private void detectMotion(Mat frame) {
-        motionDetector.apply(frame, foregroundMask);
-
-        List<MatOfPoint> contours = new ArrayList<>();
-        Mat hierarchy = new Mat();
-
-        // Limpeza de ruído
-        Mat kernel = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, new Size(3, 3));
-        Imgproc.morphologyEx(foregroundMask, foregroundMask, Imgproc.MORPH_OPEN, kernel);
-
-        Imgproc.findContours(foregroundMask, contours, hierarchy, Imgproc.RETR_EXTERNAL, Imgproc.CHAIN_APPROX_SIMPLE);
-
-        boolean motionDetected = false;
-
-        for (MatOfPoint contour : contours) {
-            if (Imgproc.contourArea(contour) > 1000) {
-                motionDetected = true;
-                Rect rect = Imgproc.boundingRect(contour);
-                Imgproc.rectangle(frame, rect, new Scalar(0, 0, 255), 1);
-            }
-        }
-
-        if (motionDetected != lastMotionStatus) {
-            String msg = motionDetected ? "Movimento detectado" : "Movimento cessado";
-            String detail = motionDetected ? "MOTION_DETECTED" : "MOTION_CEASED";
-
-            eventSender.sendEventAsync("vision", detail);
-            gui.addLog("[" + studentName + " | " + examName + "] " + msg + " (SENT)");
-            FileLogger.logTxt("[" + studentName + " | " + examName + "] " + msg);
-            FileLogger.logJson("vision", detail, 2);
-
-            lastMotionStatus = motionDetected;
-        }
-
-        gui.updateMotionStatus(motionDetected ? "Detectado" : "Estável",
-                motionDetected ? Color.RED : new Color(0, 150, 0));
-
-        hierarchy.release();
-    }
+	private static final int CAMERA_INDEX = 0;
+	private static final Size FRAME_SIZE = new Size(640, 480);
+	/** Intervalo fixo de envio de frame (1 segundo) */
+	private static final long FRAME_SEND_INTERVAL_SEC = 2;
+
+	/** Intervalo mínimo entre eventos de rosto */
+	private static final long FACE_SEND_INTERVAL_MS = 2000;
+
+	private final CascadeClassifier faceDetector;
+	private final CameraViewer gui;
+	private final VisionEventSender eventSender;
+
+	private final String studentName;
+	private final String examName;
+
+	private volatile boolean running;
+
+	private String lastFaceStatus = "";
+	private long lastFaceSentTime = 0;
+
+	/** Scheduler exclusivo para envio de frames */
+	private ScheduledExecutorService frameScheduler;
+
+	/** Último frame capturado (sempre sobrescrito) */
+	private volatile Mat lastFrame;
+
+	private String pendingFaceStatus = "";
+	private long pendingSince = 0;
+
+	private static final long FACE_STABLE_TIME_MS = 700; // tempo mínimo estável
+
+//    private final BackgroundSubtractorMOG2 motionDetector;
+//    private boolean motionDetected = false;
+
+//    private long lastFaceSentTime = 0;
+//   private static final long FACE_SEND_INTERVAL = 1000; // 1 segundo
+
+	public VisionMonitor(String student, String exam, CameraViewer gui) {
+		this.studentName = student;
+		this.examName = exam;
+		this.gui = gui;
+
+		VisionContext.init(student, exam, "N/A");
+
+		this.eventSender = new VisionEventSender();
+		this.faceDetector = loadCascade("facedetector/lbpcascade_frontalface_improved.xml");
+		// this.motionDetector = Video.createBackgroundSubtractorMOG2();
+
+		gui.setIdentity(student, exam);
+		gui.addLog("LBP Cascade carregado com sucesso");
+
+		FileLogger.logTxt("[VISION] Inicializado para " + student + " | " + exam);
+		FileLogger.logJson("vision", "INIT", 0);
+	}
+
+	/**
+	 * Carrega o classificador Haar/LBP a partir dos recursos do projeto.
+	 */
+	private CascadeClassifier loadCascade(String path) {
+		try (InputStream is = getClass().getClassLoader().getResourceAsStream(path)) {
+			if (is == null)
+				throw new RuntimeException("Cascade não encontrado: " + path);
+
+			Path temp = Files.createTempFile("lbp-", ".xml");
+			Files.copy(is, temp, StandardCopyOption.REPLACE_EXISTING);
+
+			CascadeClassifier cc = new CascadeClassifier(temp.toString());
+			if (cc.empty())
+				throw new RuntimeException("Cascade inválido");
+
+			return cc;
+		} catch (Exception e) {
+			throw new RuntimeException(e);
+		}
+	}
+
+	/**
+	 * Inicia o monitoramento da câmera e o scheduler de envio de frames.
+	 */
+	public void start() {
+		running = true;
+
+		startFrameScheduler();
+		startVisionLoop();
+	}
+
+	/**
+	 * Loop principal de captura e processamento de visão. NÃO faz envio de rede.
+	 */
+	private void startVisionLoop() {
+		new Thread(() -> {
+			VideoCapture camera = new VideoCapture(CAMERA_INDEX);
+
+			if (!camera.isOpened()) {
+				gui.setStatus("Sem Webcam");
+				eventSender.sendEventAsync("vision", "SEM_WEBCAM");
+				FileLogger.logTxt("[VISION] Webcam não disponível");
+				FileLogger.logJson("vision", "SEM_WEBCAM", 1);
+				return;
+			}
+
+			gui.setStatus("Monitorando");
+
+			Mat frame = new Mat();
+			Mat resized = new Mat();
+			Mat gray = new Mat();
+
+			while (running) {
+				if (!camera.read(frame))
+					continue;
+
+				Imgproc.resize(frame, resized, FRAME_SIZE);
+				Imgproc.cvtColor(resized, gray, Imgproc.COLOR_BGR2GRAY);
+
+				detectFace(resized, gray);
+				// detectMotion(resized, fgMask);
+				// sendFrame(resized);
+				lastFrame = resized.clone(); // sempre sobrescreve
+				gui.updateFrame(resized);
+
+				sleep(33);
+			}
+			camera.release();
+			gui.setStatus("Encerrado");
+		}, "VisionLoop").start();
+	}
+
+	/**
+	 * Scheduler responsável por enviar frames em intervalo fixo.
+	 */
+	private void startFrameScheduler() {
+		frameScheduler = Executors.newSingleThreadScheduledExecutor();
+
+		frameScheduler.scheduleAtFixedRate(() -> {
+			if (lastFrame == null)
+				return;
+
+			String base64 = FrameEncoder.encodeToBase64(lastFrame);
+			eventSender.updateVisionFrame(studentName, examName, base64);
+			eventSender.flushLatestFrame();
+
+		}, 0, FRAME_SEND_INTERVAL_SEC, TimeUnit.SECONDS);
+	}
+
+	/**
+	 * Detecção e classificação de posição do rosto. Eventos são enviados apenas
+	 * quando: - o status muda - ou o intervalo mínimo expira
+	 */
+	private void detectFace(Mat frame, Mat gray) {
+		MatOfRect faces = new MatOfRect();
+		faceDetector.detectMultiScale(gray, faces, 1.1, 3, 0, new Size(80, 80), new Size());
+
+		Rect[] detected = faces.toArray();
+		String status;
+		Color color;
+
+		if (detected.length == 0) {
+			status = "SEM_ROSTO";
+			color = Color.RED;
+		} else {
+			Rect face = detected[0];
+			int cx = face.x + face.width / 2;
+			int cy = face.y + face.height / 2;
+
+			double w = frame.width();
+			double h = frame.height();
+
+			if (cx < w * 0.30)
+				status = "ROSTO_ESQUERDA";
+			else if (cx > w * 0.70)
+				status = "ROSTO_DIREITA";
+			else if (cy < h * 0.30)
+				status = "ROSTO_CIMA";
+			else if (cy > h * 0.70)
+				status = "ROSTO_BAIXO";
+			else
+				status = "ROSTO_CENTRO";
+
+			color = new Color(0, 150, 0);
+			Imgproc.rectangle(frame, face, new Scalar(color.getBlue(), color.getGreen(), color.getRed()), 2);
+		}
+
+		long now = System.currentTimeMillis();
+
+		/*
+		 * Se o status mudou, começamos a contar o tempo de estabilidade
+		 */
+		if (!status.equals(pendingFaceStatus)) {
+		    pendingFaceStatus = status;
+		    pendingSince = now;
+		    return;
+		}
+
+		/*
+		 * Se o status ainda não ficou estável tempo suficiente, ignoramos
+		 */
+		if (now - pendingSince < FACE_STABLE_TIME_MS) {
+		    return;
+		}
+
+
+		if (!status.equals(lastFaceStatus) && now - lastFaceSentTime >= FACE_SEND_INTERVAL_MS) {
+			eventSender.sendEventAsync("vision", status);
+
+			gui.updateFaceStatus(status, color);
+			gui.addLog("[" + studentName + "] Rosto: " + status);
+
+			FileLogger.logTxt("[Rosto] " + status);
+			FileLogger.logJson("Rosto", status, 2);
+
+			lastFaceStatus = status;
+			lastFaceSentTime = now;
+		}
+	}
+
+	public void stop() {
+		running = false;
+
+		if (frameScheduler != null) {
+			frameScheduler.shutdownNow();
+		}
+
+		eventSender.sendEventAsync("vision", "VISION_ENCERRADO");
+		FileLogger.logTxt("[VISION] Encerrado");
+		FileLogger.logJson("vision", "STOPPED", 0);
+		eventSender.shutdown();
+	}
+
+	private void sleep(long ms) {
+		try {
+			Thread.sleep(ms);
+		} catch (InterruptedException ignored) {
+		}
+	}
 }
