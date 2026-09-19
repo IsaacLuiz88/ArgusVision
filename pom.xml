@@ -13,6 +13,11 @@
 
 	<properties>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+		<maven.compiler.release>17</maven.compiler.release>
+		<!-- OpenCV nao esta no Maven Central na versao usada (4.12): usa o jar local. Sobrescreva com
+		     -Dopencv.dir=... em outra maquina. A biblioteca nativa (.dll) segue via -Djava.library.path. -->
+		<opencv.dir>M:/Trabalho/opencv/build/java</opencv.dir>
+		<opencv.jar.name>opencv-4120.jar</opencv.jar.name>
 	</properties>
 
 	<dependencies>
@@ -24,10 +29,80 @@
 		</dependency>
 
 		<dependency>
+			<groupId>org.opencv</groupId>
+			<artifactId>opencv</artifactId>
+			<version>4.12.0</version>
+			<scope>system</scope>
+			<systemPath>${opencv.dir}/${opencv.jar.name}</systemPath>
+		</dependency>
+
+		<dependency>
 			<groupId>com.fasterxml.jackson.core</groupId>
 			<artifactId>jackson-databind</artifactId>
 			<version>2.17.2</version>
 		</dependency>
 
 	</dependencies>
+
+	<build>
+		<finalName>ArgusVision</finalName>
+		<plugins>
+			<!-- Copia o jar do OpenCV para target/lib/ (o manifesto o referencia por Class-Path) -->
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-resources-plugin</artifactId>
+				<version>3.3.1</version>
+				<executions>
+					<execution>
+						<id>copy-opencv</id>
+						<phase>package</phase>
+						<goals><goal>copy-resources</goal></goals>
+						<configuration>
+							<outputDirectory>${project.build.directory}/lib</outputDirectory>
+							<resources>
+								<resource>
+									<directory>${opencv.dir}</directory>
+									<includes><include>${opencv.jar.name}</include></includes>
+								</resource>
+							</resources>
+						</configuration>
+					</execution>
+				</executions>
+			</plugin>
+
+			<!-- Jar executavel: Main-Class + Jackson embutido. O OpenCV fica em lib/ ao lado do jar. -->
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-shade-plugin</artifactId>
+				<version>3.5.3</version>
+				<executions>
+					<execution>
+						<phase>package</phase>
+						<goals><goal>shade</goal></goals>
+						<configuration>
+							<createDependencyReducedPom>false</createDependencyReducedPom>
+							<transformers>
+								<transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+									<mainClass>com.argusvision.app.ArgusVisionApp</mainClass>
+									<manifestEntries>
+										<Class-Path>lib/${opencv.jar.name}</Class-Path>
+									</manifestEntries>
+								</transformer>
+							</transformers>
+							<filters>
+								<filter>
+									<artifact>*:*</artifact>
+									<excludes>
+										<exclude>META-INF/*.SF</exclude>
+										<exclude>META-INF/*.DSA</exclude>
+										<exclude>META-INF/*.RSA</exclude>
+									</excludes>
+								</filter>
+							</filters>
+						</configuration>
+					</execution>
+				</executions>
+			</plugin>
+		</plugins>
+	</build>
 </project>
