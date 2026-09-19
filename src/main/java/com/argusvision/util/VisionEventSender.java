@@ -11,7 +11,8 @@ import java.util.concurrent.atomic.AtomicReference;
 
 public class VisionEventSender {
 
-	private static final String SERVER_URL = "http://localhost:8080/api/event";
+	// Endereço vindo do config.properties / ~/.argus/config.properties (padrão: localhost:8080)
+	private static final String SERVER_URL = ConfigLoader.getEventUrl();
 	
 	/** Executor para eventos simples (teclado, foco, rosto, etc) */
     private final ExecutorService eventExecutor;

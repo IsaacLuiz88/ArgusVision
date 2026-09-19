@@ -1,6 +1,7 @@
 package com.argusvision.net;
 
 import com.argusvision.model.Session;
+import com.argusvision.util.ConfigLoader;
 import java.net.http.*;
 import java.net.URI;
 import java.net.URLEncoder;
@@ -23,9 +24,7 @@ public class SessionClient {
 
             HttpClient client = HttpClient.newHttpClient();
             HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(
-                    "http://localhost:8080/api/session/active/" + encodedStudent
-                ))
+                .uri(URI.create(ConfigLoader.getActiveSessionUrl(encodedStudent)))
                 .GET()
                 .build();
 
