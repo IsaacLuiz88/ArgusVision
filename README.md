@@ -75,41 +75,58 @@ Se nenhuma das duas fontes tiver um nome, ele encerra com uma mensagem de erro c
 
 ## Configuração
 
-`config.properties`, na raiz do projeto:
+`config.properties`, na raiz do projeto (ou na pasta de execução):
 
 ```properties
+server.url=http://localhost:8080
 camera.index=0
 ```
 
-> No momento, o endereço do ArgusServer está fixo em `http://localhost:8080` diretamente no código (`SessionClient`, `VisionEventSender`) — se o servidor rodar em outra máquina, ajuste essas constantes antes de gerar o `.jar`. O `camera.index` é a única configuração realmente lida em runtime (útil se a máquina tiver mais de uma câmera).
+- `server.url` — endereço base do ArgusServer (use `https://...` no servidor online).
+- `camera.index` — índice da webcam, se a máquina tiver mais de uma.
+
+O ArgusVision também lê `~/.argus/config.properties` (o **mesmo arquivo do plugin Argus**), que sobrescreve o local. Assim o endereço do servidor e a chave de acesso são configurados uma vez só por máquina:
+
+```properties
+server.url=https://argus.onrender.com
+security.clientKey=troque-por-uma-chave-longa
+```
+
+`security.clientKey` só é necessária se o servidor tiver `argus.security.client-key` ligada; ela é enviada no header `X-Argus-Key`. Um caminho alternativo pode ser dado com `-Dargus.config=...`.
 
 ---
 
 ## Como rodar
 
 ### Requisitos
-- Java 17+ (a mesma versão usada no restante do ecossistema)
-- OpenCV com os bindings Java configurados (jar + biblioteca nativa da plataforma)
+- Java 17+
+- Biblioteca nativa do OpenCV 4.12 para a plataforma (a do Windows x64 vem na instalação do OpenCV, pasta `build/java/x64`)
+- O jar Java do OpenCV (`opencv-4120.jar`), referenciado no `pom.xml` como dependência local (`system`); ajuste o caminho para a sua máquina
 - Webcam disponível
 - [ArgusServer](../ArgusServer) rodando, com uma sessão de aluno já registrada
 
-### Build e execução (situação atual)
+### Build
 
-O ArgusVision hoje é compilado e executado **pela IDE (Eclipse)**:
-
-- O OpenCV entra como um jar local no *Build Path* do projeto (`opencv-4120.jar`, com caminho específico da máquina no `.classpath`) — ele **não está declarado no `pom.xml`**, então `mvn compile` sozinho falha.
-- `mvn package` também não serve como distribuição: o `pom.xml` não configura `Main-Class` nem embute as dependências (Jackson e OpenCV), então não sai um jar executável.
-
-Para rodar, execute a classe `com.argusvision.app.ArgusVisionApp` com o argumento de VM apontando para a biblioteca nativa do OpenCV:
-
-```
--Djava.library.path=<pasta-com-as-libs-nativas-do-opencv>
+```bash
+mvn package
 ```
 
-- **Com o nome do aluno como argumento** (o que o plugin faria): `Nome do Aluno`.
+Gera `target/ArgusVision.jar` (executável, com Jackson embutido) e copia o jar do OpenCV para `target/lib/`. Mantenha a pasta `lib/` ao lado do jar.
+
+### Execução
+
+```bash
+java -Djava.library.path=<pasta-com-as-libs-nativas-do-opencv> -jar target/ArgusVision.jar "Nome do Aluno"
+```
+
+- **Com o nome do aluno como argumento** (o que o plugin faz).
 - **Sem argumento**, se o plugin já fez login nessa máquina: ele lê `~/ArgusLogs/current_session.properties`.
 
-**Lançamento automático pelo plugin:** o plugin executa `java -jar <argusvision.jar> <aluno>`, o que exige um jar executável com dependências — ainda não gerado por este projeto. Até isso ser empacotado (por exemplo com `maven-shade-plugin` ou `maven-assembly-plugin`), mantenha `argusvision.enabled=false` no plugin e inicie o ArgusVision manualmente.
+Também dá para executar a classe `com.argusvision.app.ArgusVisionApp` pela IDE, com o mesmo argumento de VM.
+
+**Lançamento automático pelo plugin:** no `~/.argus/config.properties` do plugin, defina `argusvision.enabled=true`, `argusvision.jar` (caminho do `ArgusVision.jar`) e `argusvision.libraryPath` (pasta das libs nativas). O plugin executa `java -jar <jar> <aluno>`.
+
+O jar foi testado apenas até a inicialização (o empacotamento e o carregamento do OpenCV); a captura de webcam com o jar não foi exercitada de ponta a ponta.
 
 ---
 
