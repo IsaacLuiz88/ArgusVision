@@ -29,7 +29,7 @@ Ele é sempre a **última peça a entrar em cena** — só faz sentido existir d
 
 Nunca há uma janela perguntando "qual é o seu nome?" no ArgusVision — essa pergunta já foi feita uma vez, no login do plugin. A partir daí, o ArgusVision descobre quem é o aluno em duas etapas, nessa ordem:
 
-1. **Argumento de linha de comando** — é assim que o [Argus](../Argus) já lança o processo automaticamente (`ArgusVisionLauncher`), passando o nome do aluno direto.
+1. **Argumento de linha de comando** — é assim que o [Argus](../Argus) lança o processo automaticamente (`ArgusVisionLauncher`, quando habilitado), passando o nome do aluno direto.
 2. **Sessão local gravada pelo plugin** — se for executado manualmente (sem argumento), ele lê `~/ArgusLogs/current_session.properties`, um arquivo que o plugin grava assim que confirma o login com o servidor. Ou seja: mesmo rodando o `.jar` na mão, ele "sabe" quem logou por último nessa máquina.
 
 Se nenhuma das duas fontes tiver um nome, ele encerra com uma mensagem de erro clara — nunca trava esperando input.
@@ -93,23 +93,23 @@ camera.index=0
 - Webcam disponível
 - [ArgusServer](../ArgusServer) rodando, com uma sessão de aluno já registrada
 
-### Build
-```bash
-mvn package
+### Build e execução (situação atual)
+
+O ArgusVision hoje é compilado e executado **pela IDE (Eclipse)**:
+
+- O OpenCV entra como um jar local no *Build Path* do projeto (`opencv-4120.jar`, com caminho específico da máquina no `.classpath`) — ele **não está declarado no `pom.xml`**, então `mvn compile` sozinho falha.
+- `mvn package` também não serve como distribuição: o `pom.xml` não configura `Main-Class` nem embute as dependências (Jackson e OpenCV), então não sai um jar executável.
+
+Para rodar, execute a classe `com.argusvision.app.ArgusVisionApp` com o argumento de VM apontando para a biblioteca nativa do OpenCV:
+
+```
+-Djava.library.path=<pasta-com-as-libs-nativas-do-opencv>
 ```
 
-### Execução
+- **Com o nome do aluno como argumento** (o que o plugin faria): `Nome do Aluno`.
+- **Sem argumento**, se o plugin já fez login nessa máquina: ele lê `~/ArgusLogs/current_session.properties`.
 
-**Modo normal (recomendado):** não faça nada — o [Argus](../Argus) já lança o ArgusVision sozinho, assim que o login do aluno é confirmado (se `argusvision.enabled=true` estiver configurado no plugin).
-
-**Modo manual (para testes):**
-```bash
-java -Djava.library.path=<pasta-com-as-libs-nativas-do-opencv> -jar ArgusVision.jar "Nome do Aluno"
-```
-Ou, se o plugin já fez login nessa máquina, sem argumento nenhum:
-```bash
-java -Djava.library.path=<pasta-com-as-libs-nativas-do-opencv> -jar ArgusVision.jar
-```
+**Lançamento automático pelo plugin:** o plugin executa `java -jar <argusvision.jar> <aluno>`, o que exige um jar executável com dependências — ainda não gerado por este projeto. Até isso ser empacotado (por exemplo com `maven-shade-plugin` ou `maven-assembly-plugin`), mantenha `argusvision.enabled=false` no plugin e inicie o ArgusVision manualmente.
 
 ---
 
