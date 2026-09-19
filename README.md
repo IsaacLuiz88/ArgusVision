@@ -1,4 +1,4 @@
-# 📷 ArgusVision — o Olho na Webcam
+# ArgusVision — o Olho na Webcam
 
 ![Java](https://img.shields.io/badge/Java-17%2B-orange?logo=openjdk&logoColor=white)
 ![OpenCV](https://img.shields.io/badge/OpenCV-4.12-5C3EE8?logo=opencv&logoColor=white)
@@ -13,9 +13,9 @@ Ele é sempre a **última peça a entrar em cena** — só faz sentido existir d
 
 ---
 
-## 🎯 O que ele faz
+## O que ele faz
 
-- Descobre sozinho quem é o aluno (sem perguntar nada na tela — ver seção [Identificação do aluno](#-identificação-do-aluno)).
+- Descobre sozinho quem é o aluno (sem perguntar nada na tela — ver seção [Identificação do aluno](#identificação-do-aluno)).
 - Liga a webcam e roda um classificador **LBP Cascade** pra achar o rosto.
 - Classifica a posição do rosto: `ROSTO_CENTRO`, `ROSTO_ESQUERDA`, `ROSTO_DIREITA`, `ROSTO_CIMA`, `ROSTO_BAIXO` ou `SEM_ROSTO`.
 - Só manda um evento de posição quando o estado **se estabiliza** por um tempo mínimo — pra não spammar o servidor a cada leve tremida de câmera.
@@ -25,7 +25,7 @@ Ele é sempre a **última peça a entrar em cena** — só faz sentido existir d
 
 ---
 
-## 🙋 Identificação do aluno
+## Identificação do aluno
 
 Nunca há uma janela perguntando "qual é o seu nome?" no ArgusVision — essa pergunta já foi feita uma vez, no login do plugin. A partir daí, o ArgusVision descobre quem é o aluno em duas etapas, nessa ordem:
 
@@ -36,7 +36,7 @@ Se nenhuma das duas fontes tiver um nome, ele encerra com uma mensagem de erro c
 
 ---
 
-## 🧩 Papel no ecossistema
+## Papel no ecossistema
 
 ```
   Argus (plugin)                 ArgusVision                    ArgusServer
@@ -55,7 +55,7 @@ Se nenhuma das duas fontes tiver um nome, ele encerra com uma mensagem de erro c
 
 ---
 
-## 🏗️ Estrutura interna
+## Estrutura interna
 
 | Classe | Responsabilidade |
 |---|---|
@@ -73,7 +73,7 @@ Se nenhuma das duas fontes tiver um nome, ele encerra com uma mensagem de erro c
 
 ---
 
-## ⚙️ Configuração
+## Configuração
 
 `config.properties`, na raiz do projeto:
 
@@ -85,7 +85,7 @@ camera.index=0
 
 ---
 
-## ▶️ Como rodar
+## Como rodar
 
 ### Requisitos
 - Java 17+ (a mesma versão usada no restante do ecossistema)
@@ -113,7 +113,7 @@ java -Djava.library.path=<pasta-com-as-libs-nativas-do-opencv> -jar ArgusVision.
 
 ---
 
-## 🔐 Observações
+## Observações
 
 - O ArgusVision **não grava vídeo contínuo** localmente — só processa e descarta frame a frame.
 - O envio de frames é deliberadamente "com perda": se um novo frame chega antes do anterior ser enviado, o antigo é descartado. Isso evita fila crescendo e atraso acumulado.
@@ -121,7 +121,7 @@ java -Djava.library.path=<pasta-com-as-libs-nativas-do-opencv> -jar ArgusVision.
 
 ---
 
-## 🔗 Projetos relacionados
+## Projetos relacionados
 
 - **[Argus](https://github.com/IsaacLuiz88/Argus)** — plugin Eclipse, quem inicia o ArgusVision.
 - **[ArgusServer](https://github.com/IsaacLuiz88/ArgusServer)** — backend central, dono da sessão e do dashboard.
