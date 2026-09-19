@@ -23,9 +23,9 @@ public class SessionClient {
                     .replace("+", "%20");
 
             HttpClient client = HttpClient.newHttpClient();
-            HttpRequest request = HttpRequest.newBuilder()
+            HttpRequest request = ConfigLoader.withClientKey(HttpRequest.newBuilder()
                 .uri(URI.create(ConfigLoader.getActiveSessionUrl(encodedStudent)))
-                .GET()
+                .GET())
                 .build();
 
             HttpResponse<String> response =
@@ -33,6 +33,10 @@ public class SessionClient {
 
             if (response.statusCode() == 404) {
                 throw new RuntimeException("Aluno não possui sessão ativa.");
+            }
+            if (response.statusCode() != 200) {
+                throw new RuntimeException("Servidor respondeu HTTP " + response.statusCode()
+                        + (response.statusCode() == 401 ? " (chave de acesso ausente ou inválida: security.clientKey)" : ""));
             }
 
             ObjectMapper mapper = new ObjectMapper();

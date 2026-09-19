@@ -2,6 +2,7 @@ package com.argusvision.util;
 
 import java.io.IOException;
 import java.io.Reader;
+import java.net.http.HttpRequest;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -65,6 +66,12 @@ public class ConfigLoader {
             return DEFAULT_SERVER_URL;
         }
         return url;
+    }
+
+    // Chave de acesso do servidor (security.clientKey no mesmo ~/.argus/config.properties do plugin).
+    public static HttpRequest.Builder withClientKey(HttpRequest.Builder builder) {
+        String key = getProperty("security.clientKey", "").trim();
+        return key.isEmpty() ? builder : builder.header("X-Argus-Key", key);
     }
 
     public static String getEventUrl() {

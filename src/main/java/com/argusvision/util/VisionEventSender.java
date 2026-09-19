@@ -107,11 +107,11 @@ public class VisionEventSender {
      */
     private void sendToServer(String json) {
         try {
-            HttpRequest request = HttpRequest.newBuilder()
+            HttpRequest request = ConfigLoader.withClientKey(HttpRequest.newBuilder()
                     .uri(URI.create(SERVER_URL))
                     .header("Content-Type", "application/json")
                     .timeout(Duration.ofSeconds(10))
-                    .POST(HttpRequest.BodyPublishers.ofString(json))
+                    .POST(HttpRequest.BodyPublishers.ofString(json)))
                     .build();
 
             HttpResponse<String> response =
